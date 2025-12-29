@@ -12,6 +12,9 @@ const __dirname = path.resolve();
 app.get("/success", (req, res) => {
   res.status(200).json({ msg: "success from api" });
 });
+app.get("/books", (req, res) => {
+  res.status(200).json({ msg: "books api" });
+});
 
 //make our app ready for deployment
 if (ENV.NODE_ENV === "production") {
