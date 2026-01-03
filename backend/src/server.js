@@ -1,52 +1,62 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
-import path from "path";
 import cors from "cors";
-import { serve } from "inngest";
-import { inngest } from "./lib/inngest.js";
+import { serve } from "inngest/express";
+import { inngest, functions } from "./lib/inngest.js";
+import { clerkMiddleware } from "@clerk/express";
 import { ENV } from "./lib/env.js";
 import { connectDB } from "./lib/db.js";
-import { fileURLToPath } from "url";
 
 const app = express();
 
-// Needed for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Middleware
+// Middlewares
 app.use(express.json());
 app.use(
   cors({
-    origin: ENV.CLIENT_URL,
+    origin: (origin, callback) => {
+      if (
+        !origin || // allow server-to-server requests
+        origin.startsWith("http://localhost") ||
+        origin.endsWith(".vercel.app")
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
 
-// Connect DB ONCE per cold start
-await connectDB();
+app.use(clerkMiddleware());
 
-// Inngest endpoint
-app.use("/api/inngest", serve({ client: inngest }));
+// Routes
+app.use("/api/inngest", serve({ client: inngest, functions }));
 
-// API routes
-app.get("/success", (req, res) => {
-  res.status(200).json({ msg: "success from api" });
+app.get("/", (req, res) => {
+  res.status(200).json({ msg: "Talent-IQ API is running" });
 });
 
-app.get("/books", (req, res) => {
-  res.status(200).json({ msg: "books api" });
+// Health check
+app.get("/health", (req, res) => {
+  res.status(200).json({ msg: "Success from API" });
 });
 
-// Serve frontend (Vite build)
-if (ENV.NODE_ENV === "production") {
-  const distPath = path.join(__dirname, "../dist");
+const startServer = async () => {
+  try {
+    if (!ENV.DB_URL) {
+      throw new Error("DB_URL environment variable is not defined");
+    }
 
-  app.use(express.static(distPath));
+    await connectDB();
 
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-}
+    const PORT = process.env.PORT || 8080;
+    app.listen(PORT, () => console.log(`server running on port ${PORT}`));
+  } catch (err) {
+    console.error("Error starting server:", err.message);
+  }
+};
 
-// Export the app
-export default app;
+startServer();
